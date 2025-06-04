@@ -62,17 +62,29 @@ def upload_files():
 
         for file_key in request.files:
             file = request.files[file_key]
-            file.save(f"./{file.filename}")
-            uploaded.append(file.filename)
+
+            # Ses dosyasını 'narration.mp3' olarak zorla
+            if "narration" in file_key and (file_key.endswith(".mp3") or file_key.endswith(".mpga")):
+                file.save("narration.mp3")
+                uploaded.append("narration.mp3")
+            else:
+                file.save(file.filename)
+                uploaded.append(file.filename)
 
         for key in request.form:
             if key not in uploaded:
                 file_url = request.form[key]
                 response = requests.get(file_url)
                 if response.status_code == 200:
-                    with open(f"./{key}", "wb") as f:
-                        f.write(response.content)
-                    uploaded.append(key)
+                    # Eğer ses dosyasıysa yine zorla
+                    if "narration" in key and (key.endswith(".mp3") or key.endswith(".mpga")):
+                        with open("narration.mp3", "wb") as f:
+                            f.write(response.content)
+                        uploaded.append("narration.mp3")
+                    else:
+                        with open(key, "wb") as f:
+                            f.write(response.content)
+                        uploaded.append(key)
                 else:
                     return jsonify({"error": f"{key} indirilemedi: {file_url}"}), 400
 
