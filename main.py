@@ -1,3 +1,4 @@
+from mutagen.mp3 import MP3
 from flask import Flask, request, jsonify, send_file
 import subprocess, os, requests, glob  # <-- glob eklendi
 
@@ -7,35 +8,42 @@ app = Flask(__name__)
 def ping():
     return "pong"
 
+from flask import Flask, request, jsonify, send_file
+import subprocess, os
+from mutagen.mp3 import MP3
+
+app = Flask(__name__)
+
 @app.route("/build-video", methods=["POST"])
 def build_video():
     try:
         image_files = [f"scene{i+1}.png" for i in range(8)]
+        audio_file = "narration.mp3"
 
-        # 🔥 Esnek mp3 dosya ismi yakalama
-        audio_candidates = glob.glob("narration.mp3*")
-        if not audio_candidates:
-            return jsonify({'error': 'narration.mp3 dosyası bulunamadı'}), 500
-        audio_file = audio_candidates[0]
+        # 1️⃣ Ses süresini al
+        audio = MP3(audio_file)
+        total_audio_duration = audio.info.length  # saniye olarak float
+        per_scene_duration = round(total_audio_duration / len(image_files), 2)
 
-        with open("input.txt", "w") as f:
-            for image in image_files:
-                f.write(f"file '{image}'\n")
-                f.write("duration 5\n")
-            f.write(f"file '{image_files[-1]}'\n")
+        # 2️⃣ FFmpeg komutunu hazırlamak için inputları diz
+        ffmpeg_cmd = ["ffmpeg", "-y"]
+        for image in image_files:
+            ffmpeg_cmd += ["-loop", "1", "-t", str(per_scene_duration), "-i", image]
 
-        subprocess.run([
-            "ffmpeg", "-y", "-f", "concat", "-safe", "0",
-            "-i", "input.txt", "-vsync", "vfr", "-pix_fmt", "yuv420p", "temp.mp4"
-        ], check=True)
+        # 3️⃣ filter_complex kısmı
+        concat_inputs = ''.join([f'[{i}:v]' for i in range(len(image_files))])
+        filter_complex = f"{concat_inputs}concat=n={len(image_files)}:v=1:a=0,format=yuv420p[v]"
+        ffmpeg_cmd += ["-filter_complex", filter_complex, "-map", "[v]"]
 
-        if not os.path.exists("temp.mp4") or not os.path.exists(audio_file):
-            return jsonify({'error': 'temp.mp4 veya ses dosyası bulunamadı'}), 500
+        # 4️⃣ sesi ekle
+        ffmpeg_cmd += ["-i", audio_file, "-c:a", "aac", "-shortest", "final_video.mp4"]
 
-        subprocess.run([
-            "ffmpeg", "-y", "-i", "temp.mp4", "-i", audio_file,
-            "-c:v", "copy", "-c:a", "aac", "final_video.mp4"
-        ], check=True)
+        # 5️⃣ Komutu çalıştır
+        subprocess.run(ffmpeg_cmd, check=True)
+
+        # 6️⃣ Kontrol ve yanıt
+        if not os.path.exists("final_video.mp4"):
+            return jsonify({'error': 'final_video.mp4 bulunamadı'}), 500
 
         return jsonify({
             'status': 'success',
