@@ -1,0 +1,4 @@
+flask
+requests
+ffmpeg-python
+gunicorn
