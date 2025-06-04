@@ -1,5 +1,5 @@
 from flask import Flask, request, jsonify, send_file
-import subprocess, os, requests
+import subprocess, os, requests, glob  # <-- glob eklendi
 
 app = Flask(__name__)
 
@@ -11,7 +11,12 @@ def ping():
 def build_video():
     try:
         image_files = [f"scene{i+1}.png" for i in range(8)]
-        audio_file = "narration.mp3"
+
+        # 🔥 Esnek mp3 dosya ismi yakalama
+        audio_candidates = glob.glob("narration.mp3*")
+        if not audio_candidates:
+            return jsonify({'error': 'narration.mp3 dosyası bulunamadı'}), 500
+        audio_file = audio_candidates[0]
 
         with open("input.txt", "w") as f:
             for image in image_files:
@@ -24,11 +29,11 @@ def build_video():
             "-i", "input.txt", "-vsync", "vfr", "-pix_fmt", "yuv420p", "temp.mp4"
         ], check=True)
 
-        if not os.path.exists("temp.mp4") or not os.path.exists("narration.mp3"):
-            return jsonify({'error': 'temp.mp4 veya narration.mp3 bulunamadı'}), 500
+        if not os.path.exists("temp.mp4") or not os.path.exists(audio_file):
+            return jsonify({'error': 'temp.mp4 veya ses dosyası bulunamadı'}), 500
 
         subprocess.run([
-            "ffmpeg", "-y", "-i", "temp.mp4", "-i", "narration.mp3",
+            "ffmpeg", "-y", "-i", "temp.mp4", "-i", audio_file,
             "-c:v", "copy", "-c:a", "aac", "final_video.mp4"
         ], check=True)
 
