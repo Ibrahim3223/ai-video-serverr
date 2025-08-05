@@ -1,0 +1,79 @@
+{
+“name”: “YouTube Shorts Otomasyon - Ülke Bilgileri”,
+“nodes”: [
+{
+“parameters”: {
+“rule”: {
+“interval”: [
+{
+“field”: “cronExpression”,
+“cronExpression”: “0 9 * * *”
+}
+]
+}
+},
+“id”: “schedule-trigger”,
+“name”: “Daily Trigger - 09:00”,
+“type”: “n8n-nodes-base.scheduleTrigger”,
+“typeVersion”: 1.1,
+“position”: [240, 300]
+},
+{
+“parameters”: {
+“jsCode”: “// Ülkeler ve ilginç kategoriler\nconst countries = [\n  {name: "Japonya", category: "teknoloji", hook: "Japonya’da robotlar…"},\n  {name: "İzlanda", category: "doğa", hook: "İzlanda’da hiç ağaç yok mu?"},\n  {name: "Singapur", category: "yasalar", hook: "Singapur’da sakız çiğnemek suç!"},\n  {name: "Norveç", category: "zenginlik", hook: "Norveç’te herkes milyoner!"},\n  {name: "Butan", category: "mutluluk", hook: "Dünyanın en mutlu ülkesi"},\n  {name: "Yeni Zelanda", category: "doğa", hook: "Yeni Zelanda’da insandan çok koyun var!"},\n  {name: "İsviçre", category: "para", hook: "İsviçre’de çöp atmak 1000 dolar!"},\n  {name: "Finlandiya", category: "eğitim", hook: "Finlandiya’da ödev yok!"},\n  {name: "Danimarka", category: "yaşam", hook: "Danimarka’da çalışma saati günde 6 saat!"},\n  {name: "Kanada", category: "doğa", hook: "Kanada’da ayılardan çok insan var mı?"}\n];\n\n// Bugünün tarihine göre rastgele seçim (her gün aynı olması için)\nconst today = new Date();\nconst dayOfYear = Math.floor((today - new Date(today.getFullYear(), 0, 0)) / (1000 * 60 * 60 * 24));\nconst selectedCountry = countries[dayOfYear % countries.length];\n\nreturn {\n  country: selectedCountry.name,\n  category: selectedCountry.category, \n  hook: selectedCountry.hook,\n  date: today.toISOString().split(‘T’)[0]\n};”
+},
+“id”: “country-selector”,
+“name”: “Ülke Seçici”,
+“type”: “n8n-nodes-base.code”,
+“typeVersion”: 2,
+“position”: [440, 300]
+},
+{
+“parameters”: {
+“authentication”: “apiKey”,
+“resource”: “chat”,
+“operation”: “message”,
+“chatId”: “gemini-pro”,
+“text”: “=Sen bir YouTube Shorts içerik üreticisisin. {{ $json.country }} hakkında 45-50 saniye sürecek ilginç bir video scripti yaz.\n\nKRİTERLER:\n- Hook: "{{ $json.hook }}" ile başla\n- Maksimum 150 kelime\n- 3 ana nokta\n- Her cümle maksimum 8 kelime (altyazı için)\n- Şaşırtıcı ve viral olabilecek bilgiler\n- Son 5 saniyede güçlü CTA (beğen, takip et)\n\nFORMAT:\n[HOOK - 0-3 saniye]\n[ANA İÇERİK - 3-40 saniye] \n[CTA - 40-50 saniye]\n\nÇıktıyı JSON formatında ver:\n{\n  "script": "tam metin",\n  "hook": "ilk 3 saniye metni",\n  "main_content": "ana içerik metni", \n  "cta": "son 5 saniye metni",\n  "title": "YouTube başlığı",\n  "description": "açıklama metni",\n  "tags": ["etiket1", "etiket2"]\n}”
+},
+“id”: “gemini-content”,
+“name”: “Gemini İçerik Üretimi”,
+“type”: “n8n-nodes-base.googleGemini”,
+“typeVersion”: 1,
+“position”: [640, 300]
+},
+{
+“parameters”: {
+“jsCode”: “// Gemini response’unu parse et\nconst response = $input.first().json.response;\nlet contentData;\n\ntry {\n  // JSON parse et\n  contentData = JSON.parse(response);\n} catch (error) {\n  // Eğer JSON değilse, basit parse\n  contentData = {\n    script: response,\n    hook: response.substring(0, 50),\n    main_content: response.substring(50, -30),\n    cta: response.substring(-30),\n    title: `${$('country-selector').first().json.country} Hakkında Şaşırtıcı Gerçek!`,\n    description: `${$('country-selector').first().json.country} ile ilgili inanılmaz bilgiler! #shorts`,\n    tags: [$(‘country-selector’).first().json.country.toLowerCase(), "ilginçbilgiler", "shorts"]\n  };\n}\n\n// Altyazı için kelime bazında timing hesapla\nconst words = contentData.script.split(’ ‘);\nconst avgWordsPerSecond = 2.5; // TTS hızı\nconst subtitles = [];\n\nlet currentTime = 0;\nwords.forEach((word, index) => {\n  subtitles.push({\n    start: currentTime,\n    end: currentTime + (60 / avgWordsPerSecond / words.length * 60),\n    text: word,\n    position: index % 6 // Her 6 kelimede bir satır değişimi\n  });\n  currentTime += (60 / avgWordsPerSecond / words.length * 60);\n});\n\nreturn {\n  …contentData,\n  country: $(‘country-selector’).first().json.country,\n  subtitles: subtitles,\n  totalDuration: currentTime\n};”
+},
+“id”: “content-parser”,
+“name”: “İçerik Parser”,
+“type”: “n8n-nodes-base.code”,
+“typeVersion”: 2,
+“position”: [840, 300]
+},
+{
+“parameters”: {
+“authentication”: “apiKey”,
+“resource”: “generate”,
+“prompt”: “=Professional photograph of {{ $json.country }}, iconic landmark, vibrant colors, cinematic lighting, ultra-detailed, 9:16 vertical aspect ratio, mobile optimized, high quality, no text, travel photography style”,
+“model”: “stable-diffusion-xl-1024-v1-0”,
+“width”: 768,
+“height”: 1344,
+“samples”: 3,
+“steps”: 30,
+“cfg_scale”: 7
+},
+“id”: “stability-images”,
+“name”: “Stability AI Görseller”,
+“type”: “n8n-nodes-base.stabilityAi”,
+“typeVersion”: 1,
+“position”: [1040, 200]
+},
+{
+“parameters”: {
+“authentication”: “serviceAccount”,
+“resource”: “text”,
+“operation”: “convert”,
+“text”: “={{ $json.script }}”,
+“options”: {\n          "voice": {\n            "languageCode": "tr-TR",\n            "name": "tr-TR-Wavenet-E",\n            "ssmlGender": "FEMALE"\n          },\n          "audioConfig": {\n            "audioEncoding": "MP3",\n            "speakingRate": 1.1,\n            "pitch": 2,\n            "volumeGainDb": 0\n          }\n        }\n      },\n      "id": "google-tts",\n      "name": "Google TTS",\n      "type": "n8n-nodes-base.googleTextToSpeech",\n      "typeVersion": 1,\n      "position": [1040, 400]\n    },\n    {\n      "parameters": {\n        "command": "=# FFmpeg ile CapCut tarzı altyazılı video oluşturma\n\n# Görselleri video’ya dönüştür\nffmpeg -loop 1 -i {{ $(‘stability-images’).first().json.artifacts[0].base64 | base64ToFile(‘png’) }} -c:v libx264 -t {{ $json.totalDuration }} -pix_fmt yuv420p -vf \"scale=1080:1920\" background.mp4\n\n# Altyazı dosyası oluştur\necho \"{{ $json.subtitles.map(sub => `${sub.start.toFixed(2)} --> ${sub.end.toFixed(2)}\\\\n${sub.text}`).join(’\\n\\n’) }}\" > subtitles.srt\n\n# Ana video assembly\nffmpeg -i background.mp4 -i {{ $(‘google-tts’).first().json.audioContent | base64ToFile(‘mp3’) }} \\\n  -vf \"subtitles=subtitles.srt:force_style=‘FontSize=32,Bold=1,PrimaryColour=&H00FFFF,OutlineColour=&H000000,Outline=2,Shadow=1,MarginV=200’\" \\\n  -c:v libx264 -c:a aac -shortest -y output.mp4\n\n# CapCut tarzı efektler ekle\nffmpeg -i output.mp4 \\\n  -vf \"zoompan=z=‘if(lte(zoom,1.0),1.5,max(1.001,zoom-0.0015))’:d=125:x=‘iw/2-(iw/zoom/2)’:y=‘ih/2-(ih/zoom/2)’,fade=in:0:30\" \\\n  -c:v libx264 -preset fast -crf 23 -y final_video.mp4"\n      },\n      "id": "ffmpeg-video",\n      "name": "FFmpeg Video Assembly",\n      "type": "n8n-nodes-base.executeCommand",\n      "typeVersion": 1,\n      "position": [1240, 300]\n    },\n    {\n      "parameters": {\n        "authentication": "oAuth2",\n        "resource": "video",\n        "operation": "upload",\n        "title": "={{ $json.title }}",\n        "categoryId": "22",\n        "description": "={{ $json.description }}\n\n#{{ $json.tags.join(’ #’) }} #shorts #keşfet #ilginçbilgiler",\n        "tags": "={{ $json.tags.join(’,’) + ‘,shorts,keşfet,ilginçbilgiler’ }}",\n        "privacyStatus": "public",\n        "binaryData": true,\n        "binaryPropertyName": "data"\n      },\n      "id": "youtube-upload",\n      "name": "YouTube Upload",\n      "type": "n8n-nodes-base.youTube",\n      "typeVersion": 1,\n      "position": [1440, 300]\n    },\n    {\n      "parameters": {\n        "content": "=✅ Video başarıyla yüklendi!\n📺 Başlık: {{ $json.title }}\n🌍 Ülke: {{ $(‘country-selector’).first().json.country }}\n⏱️ Süre: {{ $(‘content-parser’).first().json.totalDuration }}s\n🔗 URL: https://youtube.com/watch?v={{ $json.id }}",\n        "options": {}\n      },\n      "id": "notification",\n      "name": "Başarı Bildirimi",\n      "type": "n8n-nodes-base.slack",\n      "typeVersion": 1,\n      "position": [1640, 300]\n    }\n  ],\n  "connections": {\n    "Daily Trigger - 09:00": {\n      "main": [\n        [\n          {\n            "node": "Ülke Seçici",\n            "type": "main",\n            "index": 0\n          }\n        ]\n      ]\n    },\n    "Ülke Seçici": {\n      "main": [\n        [\n          {\n            "node": "Gemini İçerik Üretimi",\n            "type": "main",\n            "index": 0\n          }\n        ]\n      ]\n    },\n    "Gemini İçerik Üretimi": {\n      "main": [\n        [\n          {\n            "node": "İçerik Parser",\n            "type": "main",\n            "index": 0\n          }\n        ]\n      ]\n    },\n    "İçerik Parser": {\n      "main": [\n        [\n          {\n            "node": "Stability AI Görseller",\n            "type": "main",\n            "index": 0\n          },\n          {\n            "node": "Google TTS",\n            "type": "main",\n            "index": 0\n          }\n        ]\n      ]\n    },\n    "Stability AI Görseller": {\n      "main": [\n        [\n          {\n            "node": "FFmpeg Video Assembly",\n            "type": "main",\n            "index": 0\n          }\n        ]\n      ]\n    },\n    "Google TTS": {\n      "main": [\n        [\n          {\n            "node": "FFmpeg Video Assembly",\n            "type": "main",\n            "index": 0\n          }\n        ]\n      ]\n    },\n    "FFmpeg Video Assembly": {\n      "main": [\n        [\n          {\n            "node": "YouTube Upload",\n            "type": "main",\n            "index": 0\n          }\n        ]\n      ]\n    },\n    "YouTube Upload": {\n      "main": [\n        [\n          {\n            "node": "Başarı Bildirimi",\n            "type": "main",\n            "index": 0\n          }\n        ]\n      ]\n    }\n  },\n  "settings": {\n    "timezone": "Europe/Istanbul",\n    "saveExecutionProgress": true,\n    "saveDataErrorExecution": "all",\n    "saveDataSuccessExecution": "all"\n  },\n  "staticData": {},\n  "tags": [\n    {\n      "createdAt": "2024-01-01T00:00:00.000Z",\n      "updatedAt": "2024-01-01T00:00:00.000Z",\n      "id": "1",\n      "name": "YouTube Automation"\n    }\n  ],\n  "triggerCount": 1,\n  "updatedAt": "2024-01-01T00:00:00.000Z",\n  "versionId": "1"\n}
